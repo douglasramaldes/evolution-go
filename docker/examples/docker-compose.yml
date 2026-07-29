@@ -1,7 +1,10 @@
-version: '3.8'
-
 services:
   evolution-go:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      args:
+        VERSION: "0.7.2-patched"
     image: evolution-go:latest
     container_name: evolution-go
     restart: unless-stopped
