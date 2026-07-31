@@ -5,6 +5,12 @@ services:
     image: evoapicloud/evolution-go:latest
     networks:
       - network_public
+    # Sem rotação o json-file cresce sem limite e enche o disco do node.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       # Servidor
       SERVER_PORT: 4000
