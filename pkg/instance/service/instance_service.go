@@ -317,7 +317,15 @@ func (i instances) Disconnect(instance *instance_model.Instance) (*instance_mode
 	if client.IsConnected() {
 		if client.IsLoggedIn() {
 			i.loggerWrapper.GetLogger(instance.Id).LogInfo("[%s] Disconnection successful", instance.Id)
-			i.killChannel[instance.Id] <- true
+
+			// Envio não-bloqueante: se a instância estiver entre um restart e
+			// outro o canal ainda não existe, e um send direto prendia esta
+			// requisição HTTP para sempre.
+			select {
+			case i.killChannel[instance.Id] <- true:
+			case <-time.After(5 * time.Second):
+				i.loggerWrapper.GetLogger(instance.Id).LogWarn("[%s] No client listening for the kill signal", instance.Id)
+			}
 
 			instance.Events = ""
 
@@ -594,14 +602,10 @@ func (i instances) Delete(id string) error {
 		i.clientPointer[instance.Id].Disconnect()
 	}
 
-	// Limpar todos os recursos da instância antes de deletar
-	delete(i.clientPointer, instance.Id)
-	if i.killChannel[instance.Id] != nil {
-		close(i.killChannel[instance.Id])
-		delete(i.killChannel, instance.Id)
-	}
-
-	// Limpar cache via whatsmeow service
+	// Limpar todos os recursos da instância antes de deletar. Quem para o
+	// cliente e solta os mapas é o ClearInstanceCache: fechar o canal aqui
+	// deixava um canal fechado visível para quem fosse sinalizar, o que derruba
+	// o processo com "send on closed channel".
 	err = i.whatsmeowService.ClearInstanceCache(instance.Id, instance.Token)
 	if err != nil {
 		i.loggerWrapper.GetLogger(instance.Id).LogWarn("[%s] Failed to clear instance cache: %v", instance.Id, err)
