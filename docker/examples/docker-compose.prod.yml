@@ -1,0 +1,73 @@
+# Produção consolidada (VPS) — Postgres + Evolution Go, sem expor DB na internet.
+# Uso: copiar para /opt/evolution-go no servidor, .env ao lado, docker compose -f docker-compose.prod.yml up -d
+
+services:
+  evolution-go:
+    image: evoapicloud/evolution-go:latest
+    container_name: evolution-go
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    ports:
+      - "127.0.0.1:${SERVER_PORT:-4000}:${SERVER_PORT:-4000}"
+    env_file:
+      - .env
+    volumes:
+      - evolution_data:/app/dbdata
+      - evolution_logs:/app/logs
+    networks:
+      - evolution_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 3G
+        reservations:
+          memory: 512M
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: evolution-postgres
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    networks:
+      - evolution_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1536M
+
+volumes:
+  evolution_data:
+    driver: local
+  evolution_logs:
+    driver: local
+  postgres_data:
+    driver: local
+
+networks:
+  evolution_network:
+    driver: bridge
